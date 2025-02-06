@@ -1,0 +1,240 @@
+---
+- name: Instruqt AAP Setup for NetBox [Production]
+  hosts: localhost
+  become: false
+  gather_facts: false
+
+  collections:
+    - ansible.controller 
+
+  vars:
+    controller_host: localhost
+    SANDBOX_ID: "{{ lookup('env', '_SANDBOX_ID') | default('SANDBOX_ID_NOT_FOUND', true) }}"
+    controller_username: admin
+    controller_password: ansible123!
+    inventory_name: netbox-inventory
+    credentials_name: cat8000v-credential
+    NETBOX_API_VAR: "{{ '{{' }} NETBOX_API {{ '}}' }}"
+    NETBOX_TOKEN_VAR: "{{ '{{' }} NETBOX_TOKEN {{ '}}' }}"
+    
+  
+  tasks:
+    - name: (EXECUTION) Create machine Credentials for the lab
+      ansible.controller.credential:
+        validate_certs: false
+        controller_username: admin
+        controller_password: ansible123!
+        name: cat8000v-credential
+        credential_type: Machine
+        organization: Default
+        inputs:
+          username: admin
+          ssh_key_data: "{{ lookup('file', '/home/rhel/.ssh/id_ed25519' ) }}"
+
+
+    - name: (EXECUTION) Create new execution environment
+      ansible.controller.execution_environment:
+        validate_certs: false
+        controller_username: admin
+        controller_password: ansible123!
+        name: network-ee
+        image: ghcr.io/ansible-network/autocon-ee:latest
+        pull: missing
+
+
+
+    - name: (EXECUTION) Create an inventory in automation controller
+      ansible.controller.inventory:
+        name: "NetOps Inventory"
+        organization: Default
+        validate_certs: false
+        controller_username: admin
+        controller_password: ansible123!
+
+    - name: Add host
+      ansible.controller.host:
+        name: cat1
+        inventory: "NetOps Inventory"
+        state: present
+        variables:
+          ansible_host: cisco
+        validate_certs: false
+        controller_username: admin
+        controller_password: ansible123!
+
+    - name: Add host
+      ansible.controller.host:
+        name: cat2
+        inventory: "NetOps Inventory"
+        state: present
+        variables:
+          ansible_host: cisco2
+        validate_certs: false
+        controller_username: admin
+        controller_password: ansible123!
+
+    - name: Add host
+      ansible.controller.host:
+        name: cat3
+        inventory: "NetOps Inventory"
+        state: present
+        variables:
+          ansible_host: cisco3
+        validate_certs: false
+        controller_username: admin
+        controller_password: ansible123!
+
+    - name: Add group
+      ansible.controller.group:
+        name: cisco
+        inventory: "NetOps Inventory"
+        hosts:
+          - cat1
+          - cat2
+          - cat3
+        state: present
+        variables:
+          - { 
+              'ansible_connection': 'ansible.netcommon.network_cli',
+              'ansible_network_os': 'cisco.ios.ios',
+              'ansible_user': 'admin'
+            }
+        validate_certs: false
+        controller_username: admin
+        controller_password: ansible123!
+
+    - name: (EXECUTION) Create new Project from git
+      ansible.controller.project:
+        name: "NetOps Playbooks"
+        organization: Default
+        state: present
+        scm_type: git
+        scm_url: http://gitea:3000/student/aap_workshop.git
+        validate_certs: false
+        controller_username: admin
+        controller_password: ansible123!
+
+    - name: (EXECUTION) Create a new Job Template
+      ansible.controller.job_template:
+        name: "Configure SNMP"
+        job_type: "run"
+        organization: "Default"
+        state: "present"
+        inventory: "NetOps Inventory"
+        playbook: "solutions/playbooks/snmp.yml"
+        project: "NetOps Playbooks"
+        credential: "cat8000v-credential"
+        validate_certs: false
+        controller_username: admin
+        controller_password: ansible123!        
+
+    - name: (EXECUTION) Create a new Job Template
+      ansible.controller.job_template:
+        name: "Update Banner"
+        job_type: "run"
+        organization: "Default"
+        state: "present"
+        inventory: "NetOps Inventory"
+        playbook: "solutions/playbooks/banner.yml"
+        project: "NetOps Playbooks"
+        credential: "cat8000v-credential"
+        survey_enabled: true
+        survey_spec:
+          - {
+              "name": "Simple Survey",
+              "spec": [
+                  {
+                    "question_name": "What is the banner type?",
+                    "question_description": "Enter the banner message",
+                    "variable": "banner_type",
+                    "type": "multiplechoice",
+                    "choices": ["login", "motd"],
+                    "default": "login",
+                    "required": false
+                  },
+                  {
+                    "question_name": "What is the banner message?",
+                    "question_description": "Enter the banner message",
+                    "variable": "network_banner",
+                    "type": "text",
+                    "default": "This is the default banner message",
+                    "required": false
+                  }             
+              ]
+          }
+        validate_certs: false
+        controller_username: admin
+        controller_password: ansible123!        
+
+    - name: Create a workflow job template with nodes 
+      ansible.controller.workflow_job_template:
+        name: "Network Device Initial Setup Workflow"
+        description: "Configure SNMP and update banner on Cisco devices"
+        inventory: "NetOps Inventory"
+        workflow_nodes:
+          - identifier: SNMP
+            unified_job_template:
+              organization:
+                name: Default
+              name: "Configure SNMP"
+              type: job_template
+            credentials: []
+            related:
+              success_nodes: []
+              failure_nodes: []
+              always_nodes:
+                - identifier: BANNER
+              credentials: []
+          - identifier: BANNER
+            all_parents_must_converge: false
+            unified_job_template:
+              organization:
+                name: Default
+              name: "Update Banner"
+              type: job_template
+            related:
+              success_nodes: []
+              failure_nodes: []
+              always_nodes: []
+              credentials: []
+        validate_certs: false
+        controller_username: admin
+        controller_password: ansible123!
+
+
+    - name: Debug SANDBOX_ID
+      ansible.builtin.debug:
+        msg: "https://control.{{ SANDBOX_ID }}.instruqt.io/api/controller/"
+      vars:
+        SANDBOX_ID: "{{ lookup('env', '_SANDBOX_ID') | default('SANDBOX_ID_NOT_FOUND', true) }}"
+    
+    - name: (DECISIONS) Create an AAP Credential
+      ansible.eda.credential:
+        name: "AAP"
+        description: "To execute jobs from EDA"
+        inputs:
+          host: "https://control.{{ SANDBOX_ID }}.instruqt.io/api/controller/"
+          username: "admin"
+          password: "ansible123!"
+        credential_type_name: "Red Hat Ansible Automation Platform"
+        controller_host: "https://control.{{ SANDBOX_ID }}.instruqt.io"
+        controller_username: admin
+        controller_password: ansible123!
+        validate_certs: false
+        organization_name: Default
+      vars:
+        SANDBOX_ID: "{{ lookup('env', '_SANDBOX_ID') | default('SANDBOX_ID_NOT_FOUND', true) }}"
+    
+    - name: (DECISIONS) Create a new DE
+      ansible.eda.decision_environment:
+        controller_host: "https://control.{{ SANDBOX_ID }}.instruqt.io"
+        controller_username: admin
+        controller_password: ansible123!
+        validate_certs: false
+        organization_name: Default
+        name: "NetOps Decision Environment"
+        description: "Decision Environment for NetOps workshop"
+        image_url: "ghcr.io/ansible-network/autocon-de:latest"
+      vars:
+        SANDBOX_ID: "{{ lookup('env', '_SANDBOX_ID') | default('SANDBOX_ID_NOT_FOUND', true) }}"
+
