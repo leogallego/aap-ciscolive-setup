@@ -138,31 +138,27 @@
         credential: "cat8000v-credential"
         survey_enabled: true
         survey_spec:
-          - {
-              "name": "Simple Survey",
-              "spec": [
-                  {
-                    "question_name": "What is the banner type?",
-                    "question_description": "Enter the banner message",
-                    "variable": "banner_type",
-                    "type": "multiplechoice",
-                    "choices": ["login", "motd"],
-                    "default": "login",
-                    "required": false
-                  },
-                  {
-                    "question_name": "What is the banner message?",
-                    "question_description": "Enter the banner message",
-                    "variable": "network_banner",
-                    "type": "text",
-                    "default": "This is the default banner message",
-                    "required": false
-                  }             
-              ]
-          }
+          name: "Banner survey"
+          description: "banner survey with type and message"
+          spec:
+            - question_name: "What is the banner type?"
+              question_description: "Enter the banner message"
+              variable: "banner_type"
+              type: "multiplechoice"
+              choices: ["login", "motd"]
+              default: "login"
+              required: false
+            - question_name: "What is the banner message?"
+              question_description: "Enter the banner message"
+              variable: "network_banner"
+              type: "text"
+              default: "This is the default banner message"
+              required: false
         validate_certs: false
         controller_username: admin
-        controller_password: ansible123!        
+        controller_password: ansible123!
+      tags:
+        - survey      
 
     - name: Create a workflow job template with nodes 
       ansible.controller.workflow_job_template:
