@@ -94,11 +94,9 @@
           - cat3
         state: present
         variables:
-          - { 
-              'ansible_connection': 'ansible.netcommon.network_cli',
-              'ansible_network_os': 'cisco.ios.ios',
-              'ansible_user': 'admin'
-            }
+          ansible_connection: 'ansible.netcommon.network_cli'
+          ansible_network_os: 'cisco.ios.ios'
+          ansible_user': 'admin'
         validate_certs: false
         controller_username: admin
         controller_password: ansible123!
